@@ -14,16 +14,45 @@ public class NaiiveBayesImplementation {
     static int types;
     static int total;
 
+    static double[] totalAcc1 = new double[10];
+    static double[] totalAcc2 = new double[10];
+
+
     public static void main(String[] args) {
         ReadWrite r = new ReadWrite();
         String[] files = {"discrete_breastCancer.data", "discrete_glass.data", "house-votes.data",
                             "discrete_iris.data", "discrete_soybean-small.data"}; //List the files that will be opened.
+
+        for(int i = 0; i < totalAcc1.length; i++){
+            totalAcc1[i] = 0;
+            totalAcc2[i] = 0;
+        }
+
         for(String path : files){
             String file = r.readEntireFile(path); //Reads the entire file as a String
             System.out.println(path); // Prints the filepath to the console so we can tell what the output corresponds to
 
-            doEverything(file);
-            DataPoint.resetTypes();
+            int reps = 1000; // How many times to train and re-train to get a better accuracy
+
+            for(int i = 0; i < reps; i++){ //Runs the driver many times
+                doEverything(file);
+                DataPoint.resetTypes();
+            }
+
+            for (int i = 0; i < totalAcc1.length; i++) { //Calculates the average of each trial
+                totalAcc1[i] /= reps;
+                totalAcc2[i] /= reps;
+            }
+
+            System.out.println("Scrambled Accuracy: " + Arrays.toString(totalAcc1));
+            System.out.println("Avg: " + avg(totalAcc1));
+
+            System.out.println("Scrambled Accuracy: " + Arrays.toString(totalAcc2));
+            System.out.println("Avg: " + avg(totalAcc2));
+
+            System.out.println("T Value: " + studentT(totalAcc1, totalAcc2));
+
+
             System.out.println("*******************************************");
 
         }
@@ -55,17 +84,22 @@ public class NaiiveBayesImplementation {
         DataPoint[][] data = fold(rawData);//Folds the data randomly into 10 folds
 
         double[] accuracy = trainTest(data);//Gets an array of the accuracy of each fold
-        System.out.println("Original Accuracy: " + Arrays.toString(accuracy)); //Un-scrambled accuracy
-        System.out.println("Avg: " + avg(accuracy));
+//        System.out.println("Original Accuracy: " + Arrays.toString(accuracy)); //Un-scrambled accuracy
+//        System.out.println("Avg: " + avg(accuracy));
+
+        for(int i = 0; i < accuracy.length; i++){
+            totalAcc1[i] += accuracy[i];
+        }
+
 
         DataPoint[] rawCopy = rawData.clone();//Attempts to clone the data (Doesn't work as pointers still point to old DataPoint object)
         int numAttributesToShuffle = (int) (0.1 * attributes) + 1; //Shuffles 10% of the data
 
-        System.out.println("Shuffling: " + numAttributesToShuffle);
+        //System.out.println("Shuffling: " + numAttributesToShuffle);
         ArrayList<Integer> index = new ArrayList<>();//Holds the columns that have been shuffled so they don't get shuffled again
         for(int i = 0; i < numAttributesToShuffle; i++) {
             int ran = rand.nextInt(attributes);
-            while (index.contains(ran) || ran < 0 || ran > attributes){ // Makes sure the random number is good to shuffle
+            while (index.contains(ran) || ran < 0 || ran >= attributes){ // Makes sure the random number is good to shuffle
                 ran = rand.nextInt();
             }
             index.add(ran);
@@ -78,10 +112,14 @@ public class NaiiveBayesImplementation {
 
         double[] accuracyCopy = trainTest(dataCopy); // The accuracy of the scrrambled data
 
-        System.out.println("Scrambled Accuracy: " + Arrays.toString(accuracyCopy));
-        System.out.println("Avg: " + avg(accuracyCopy));
+        for(int i = 0; i < accuracyCopy.length; i++){
+            totalAcc2[i] += accuracyCopy[i];
+        }
 
-        System.out.println("T Value: " + studentT(accuracy, accuracyCopy));
+//        System.out.println("Scrambled Accuracy: " + Arrays.toString(accuracyCopy));
+//        System.out.println("Avg: " + avg(accuracyCopy));
+//
+//        System.out.println("T Value: " + studentT(accuracy, accuracyCopy));
     }
 
     /**
@@ -155,8 +193,10 @@ public class NaiiveBayesImplementation {
             dataPoint = trainData[row++];//increment datapoint
         }
         if(row < 2){//Due to not perfectly even folding (randomized), small datasets are possible to have empty folds
-            System.out.println("OOPS, one fold is empty");
+            System.out.println("Fold is empty");
+
         }
+
     }
 
     /**
@@ -222,12 +262,24 @@ public class NaiiveBayesImplementation {
      */
     public static DataPoint[][] fold(DataPoint[] points){
         DataPoint[][] data = new DataPoint[10][points.length];
-        int[] counters = new int[10];
+        int[] counters = new int[10];//so the elements go into the array in order (ie. all the null values are at the end)
         Random rand = new Random();
 
-        for (int i = 0; i < points.length; i++) {
+        for(int i = 0; i < 10; i++){ //ensures all folds have at least one DataPoint
+            data[i][counters[i]++] = points[i];
+        }
+
+        for (int i = 10; i < points.length; i++) {
             int random = rand.nextInt(10);
-            data[random][counters[random]++] = points[i];
+            try {
+                data[random][counters[random]++] = points[i];
+            }catch (ArrayIndexOutOfBoundsException e){
+                System.out.println("ERROR: OUT OF BOUNDS EXCEPTION: ");
+                System.out.println(random);
+                System.out.println(counters[random]);
+                System.out.println(i);
+            }
+
         }
 
         return data;
@@ -247,10 +299,14 @@ public class NaiiveBayesImplementation {
         double yVar = variance(y);
 
         double numerator = xMean - yMean;
-        double denominator = Math.sqrt(xVar/x.length + yVar/y.length);
+
+
+        double denominator = Math.sqrt(xVar/(x.length) + yVar/(y.length));
 
         return numerator/denominator;
+    }
 
+    public static double MSE(){
 
     }
 
@@ -260,12 +316,14 @@ public class NaiiveBayesImplementation {
      * @return the variance
      */
     public static double variance(double[] x){
-        double scalar = 1/(double)(x.length -1);
+
         double mean = avg(x);
         double sum = 0;
+        int misses = 0;
         for(int i = 0; i < x.length; i++){
-            sum += (x[i] - mean)*(x[i] - mean);
+            sum += (x[i] - mean) * (x[i] - mean);
         }
+        double scalar = 1/(double)(x.length -1 - misses);
         return scalar * sum;
     }
 
