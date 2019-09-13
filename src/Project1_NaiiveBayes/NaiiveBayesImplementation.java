@@ -17,40 +17,57 @@ public class NaiiveBayesImplementation {
     static double[] totalAcc1 = new double[10];
     static double[] totalAcc2 = new double[10];
 
+    static double[] totalF1 = new double[10];
+    static double[] totalF2 = new double[10];
+
 
     public static void main(String[] args) {
         ReadWrite r = new ReadWrite();
+
         String[] files = {"discrete_breastCancer.data", "discrete_glass.data", "house-votes.data",
                             "discrete_iris.data", "discrete_soybean-small.data"}; //List the files that will be opened.
 
-        for(int i = 0; i < totalAcc1.length; i++){
-            totalAcc1[i] = 0;
-            totalAcc2[i] = 0;
-        }
-
         for(String path : files){
-            String file = r.readEntireFile(path); //Reads the entire file as a String
-            System.out.println(path); // Prints the filepath to the console so we can tell what the output corresponds to
-
-            int reps = 1000; // How many times to train and re-train to get a better accuracy
-
-            for(int i = 0; i < reps; i++){ //Runs the driver many times
-                doEverything(file);
-                DataPoint.resetTypes();
+            for(int i = 0; i < totalAcc1.length; i++){ //Resets the totals
+                totalAcc1[i] = 0;
+                totalAcc2[i] = 0;
+                totalF1[i] = 0;
+                totalF2[i] = 0;
             }
 
-            for (int i = 0; i < totalAcc1.length; i++) { //Calculates the average of each trial
+            String file = r.readEntireFile(path); //Reads the entire file as a String
+            System.out.println(path + '\n'); // Prints the filepath to the console so we can tell what the output corresponds to
+
+            int reps = 1000;//Repeats the model many times to approach true-er average values
+
+            for (int i = 0; i < reps; i++) {
+                DataPoint.resetTypes();
+                doEverything(file);
+            }
+
+            for(int i = 0; i < totalAcc1.length; i++){ // averages each value
                 totalAcc1[i] /= reps;
                 totalAcc2[i] /= reps;
+                totalF1[i] /= reps;
+                totalF2[i] /= reps;
             }
 
-            System.out.println("Scrambled Accuracy: " + Arrays.toString(totalAcc1));
+            System.out.println("Control Accuracy: " + Arrays.toString(totalAcc1));
             System.out.println("Avg: " + avg(totalAcc1));
+
+            System.out.println("Control F-Scores" + Arrays.toString(totalF1));
+            System.out.println("Avg: " + avg(totalF1));
+            System.out.println();
 
             System.out.println("Scrambled Accuracy: " + Arrays.toString(totalAcc2));
             System.out.println("Avg: " + avg(totalAcc2));
 
-            System.out.println("T Value: " + studentT(totalAcc1, totalAcc2));
+            System.out.println("Control F-Scores" + Arrays.toString(totalF2));
+            System.out.println("Avg: " + avg(totalF2));
+            System.out.println();
+
+            System.out.println("T Value Accuracy: " + studentT(totalAcc1, totalAcc2));
+            System.out.println("T Value F-Score: " + studentT(totalF1, totalF2));
 
 
             System.out.println("*******************************************");
@@ -81,14 +98,16 @@ public class NaiiveBayesImplementation {
         attributes = rawData[0].self.length;//Number of different attributes
         types = DataPoint.types.size();//Number of different classes
 
+
         DataPoint[][] data = fold(rawData);//Folds the data randomly into 10 folds
 
-        double[] accuracy = trainTest(data);//Gets an array of the accuracy of each fold
-//        System.out.println("Original Accuracy: " + Arrays.toString(accuracy)); //Un-scrambled accuracy
-//        System.out.println("Avg: " + avg(accuracy));
+        double[][] temp = trainTest(data);
+        double[] accuracy = temp[0];//Gets an array of the accuracy of each fold
+        double[] fScores = temp[1];
 
-        for(int i = 0; i < accuracy.length; i++){
+        for(int i = 0; i < accuracy.length; i++){ //Adds the accuracy and f-score to the totals
             totalAcc1[i] += accuracy[i];
+            totalF1[i] += fScores[i];
         }
 
 
@@ -103,23 +122,21 @@ public class NaiiveBayesImplementation {
                 ran = rand.nextInt();
             }
             index.add(ran);
-            //System.out.println(ran);
-            rawCopy = fisherYatesShuffle(rawCopy, ran);//Shuffles the attributes
+            rawCopy = shuffle(rawCopy, ran);//Shuffles the attributes
         }
 
 
-        DataPoint[][] dataCopy = fold(rawCopy); //Folds the scrambled data
+        DataPoint[][] dataScrambled = fold(rawCopy); //Folds the scrambled data
 
-        double[] accuracyCopy = trainTest(dataCopy); // The accuracy of the scrrambled data
+        temp = trainTest(dataScrambled);
+        double[] accuracyScrambled = temp[0]; // The accuracy of the scrrambled data
+        double[] fScoresScrambled = temp[1];
 
-        for(int i = 0; i < accuracyCopy.length; i++){
-            totalAcc2[i] += accuracyCopy[i];
+        for(int i = 0; i < accuracyScrambled.length; i++){ //adds the accuracy and f-score to totals
+            totalAcc2[i] += accuracyScrambled[i];
+            totalF2[i] += fScoresScrambled[i];
         }
 
-//        System.out.println("Scrambled Accuracy: " + Arrays.toString(accuracyCopy));
-//        System.out.println("Avg: " + avg(accuracyCopy));
-//
-//        System.out.println("T Value: " + studentT(accuracy, accuracyCopy));
     }
 
     /**
@@ -127,8 +144,9 @@ public class NaiiveBayesImplementation {
      * @param data The data to be trained on
      * @return the accuracy of each fold in an array with length 10
      */
-    private static double[] trainTest(DataPoint[][] data){
+    private static double[][] trainTest(DataPoint[][] data){
         double[] accuracy = new double[10];
+        double[] fScore = new double[10];
 
         int testCol = 0;//The column used for testing the data
         for(int fold = 0; fold < 10; fold++) { //Loops for k-folds
@@ -138,10 +156,12 @@ public class NaiiveBayesImplementation {
                     trainCol(data[col]);
                 }
             }
-            accuracy[fold] = test(data[testCol]);
+            accuracy[fold] = testAcc(data[testCol]);
+            fScore[fold] = testF(data[testCol]);
+
             testCol++;
         }
-        return accuracy;
+        return new double[][]{accuracy, fScore};
     }
 
     /**
@@ -160,12 +180,12 @@ public class NaiiveBayesImplementation {
     }
 
     /**
-     * An implementation of the Fisher-Yates shuffle algorithm.
+     * An implementation of the Durstenfeld shuffle algorithm (AKA Fisher-Yates).
      * @param x Array to shuffle
      * @param att Which column to shuffle
      * @return the scrambled array (not necessary as the algorithm modifies the DataPoint[] object)
      */
-    private static DataPoint[] fisherYatesShuffle(DataPoint[] x, int att){
+    private static DataPoint[] shuffle(DataPoint[] x, int att){
         Random rand = new Random();
         for(int i = x.length - 1; i > 0; i--){
             int j = rand.nextInt(i + 1); //Swaps with a random element less than i
@@ -173,7 +193,7 @@ public class NaiiveBayesImplementation {
             x[i].self[att] = x[j].self[att];
             x[j].self[att] = temp;
         }
-        return x;
+        return x; //not necessary
     }
 
     /**
@@ -192,10 +212,6 @@ public class NaiiveBayesImplementation {
             sums[dataPoint.type][attributes] ++;//increment total
             dataPoint = trainData[row++];//increment datapoint
         }
-        if(row < 2){//Due to not perfectly even folding (randomized), small datasets are possible to have empty folds
-            System.out.println("Fold is empty");
-
-        }
 
     }
 
@@ -204,19 +220,69 @@ public class NaiiveBayesImplementation {
      * @param testData The data to be tested
      * @return The accuracy of the model
      */
-    private static double test(DataPoint[] testData){
+    private static double testAcc(DataPoint[] testData){
         int row = 0;
-        DataPoint dataPoint = testData[row++];
+        DataPoint dataPoint = testData[row++]; //initialize the datapoint
+
+        //counters
         int totalTest = 0;
         int correctClassification = 0;
-        while (dataPoint != null) {
-            totalTest += 1;
-            if(classify(dataPoint) == dataPoint.type)
+
+        while (dataPoint != null) { //we know the last datapoint will be null (but this is not necessarily close to testData.length)
+            totalTest++;//increment total
+            if(classify(dataPoint) == dataPoint.type) //if we get it right add to the total correct
                 correctClassification++;
 
-            dataPoint = testData[row++];
+            dataPoint = testData[row++]; //increment datapoint
         }
         return (double) correctClassification/(double) totalTest;
+    }
+
+    /**
+     * This calculates the F1 score of the testing data
+     * @param testData the data to be tested
+     * @return the F1 score
+     */
+    private static double testF(DataPoint[] testData){
+        int row = 0;
+
+        //Makes a convolution matrix so that we can calculate the rate of true positives, false positives, and false negatives
+        //First index will be true classification, Second index will be what the model classified
+        int[][] classifications = new int[types][types];
+
+        DataPoint dataPoint = testData[row++];
+        while (dataPoint != null){ //we know the last datapoint will be null (but this is not necessarily close to testData.length)
+
+            classifications[dataPoint.type][classify(dataPoint)]++;//add the value to the matrix at the spot where we classified it.
+
+            dataPoint = testData[row++];//increment datapoint
+        }
+
+        double precision = 0;
+        double recall = 0;
+        for (int perspec = 0; perspec < classifications.length; perspec++) {//iterates through the perspective
+            int TP = 0;  //True positive
+            int FP = 0;  //False positive
+            int FN = 0;  //False negative
+            for (int compare = 0; compare < classifications.length; compare++) {
+                if(compare != perspec){
+                    FP += classifications[compare][perspec]; // Checks side to side for false positives
+                    FN += classifications[perspec][compare]; // Checks up and down for false negatives
+                } else{
+                    TP += classifications[perspec][compare]; // Checks for the correct classifications
+                }
+            }
+
+            if(TP + FP != 0 && TP + FN != 0) { // Make sure we have values to avoid NaN
+                precision += (double) TP / ((double) (TP + FP)); //Sums the precision
+                recall += (double) TP / ((double) (TP + FN)); //Sums the recall
+            }
+
+        }
+        precision /= types;
+        recall /= types;
+
+        return 2 * (precision * recall) / (precision + recall);
     }
 
     /**
@@ -271,25 +337,17 @@ public class NaiiveBayesImplementation {
 
         for (int i = 10; i < points.length; i++) {
             int random = rand.nextInt(10);
-            try {
-                data[random][counters[random]++] = points[i];
-            }catch (ArrayIndexOutOfBoundsException e){
-                System.out.println("ERROR: OUT OF BOUNDS EXCEPTION: ");
-                System.out.println(random);
-                System.out.println(counters[random]);
-                System.out.println(i);
-            }
-
+            data[random][counters[random]++] = points[i]; //places the points into the folds in order so as to avoid null values
         }
 
         return data;
     }
 
     /**
-     * Runs the studentT test to test difference between two arrays
+     * Runs the studentT testAcc to testAcc difference between two arrays
      * @param x the first array
      * @param y the second array
-     * @return the student T test
+     * @return the student T testAcc
      */
     public static double studentT(double[] x, double[] y){
         double xMean = avg(x);
@@ -306,10 +364,6 @@ public class NaiiveBayesImplementation {
         return numerator/denominator;
     }
 
-    public static double MSE(){
-
-    }
-
     /**
      * Calculates the variance of an array
      * @param x the array
@@ -319,11 +373,10 @@ public class NaiiveBayesImplementation {
 
         double mean = avg(x);
         double sum = 0;
-        int misses = 0;
         for(int i = 0; i < x.length; i++){
             sum += (x[i] - mean) * (x[i] - mean);
         }
-        double scalar = 1/(double)(x.length -1 - misses);
+        double scalar = 1/(double)(x.length -1);
         return scalar * sum;
     }
 
