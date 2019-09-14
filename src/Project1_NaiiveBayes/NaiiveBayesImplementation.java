@@ -38,22 +38,14 @@ public class NaiiveBayesImplementation {
             String file = r.readEntireFile(path); //Reads the entire file as a String
             System.out.println(path + '\n'); // Prints the filepath to the console so we can tell what the output corresponds to
 
-            int reps = 1000;//Repeats the model many times to approach true-er average values
 
-            for (int i = 0; i < reps; i++) {
-                DataPoint.resetTypes();
-                doEverything(file);
-            }
+            DataPoint.resetTypes();
+            doEverything(file);
 
-            for(int i = 0; i < totalAcc1.length; i++){ // averages each value
-                totalAcc1[i] /= reps;
-                totalAcc2[i] /= reps;
-                totalF1[i] /= reps;
-                totalF2[i] /= reps;
-            }
 
             System.out.println("Control Accuracy: " + Arrays.toString(totalAcc1));
             System.out.println("Avg: " + avg(totalAcc1));
+            System.out.println("Var: " + variance(totalAcc1));
 
             System.out.println("Control F-Scores" + Arrays.toString(totalF1));
             System.out.println("Avg: " + avg(totalF1));
@@ -62,7 +54,7 @@ public class NaiiveBayesImplementation {
             System.out.println("Scrambled Accuracy: " + Arrays.toString(totalAcc2));
             System.out.println("Avg: " + avg(totalAcc2));
 
-            System.out.println("Control F-Scores" + Arrays.toString(totalF2));
+            System.out.println("Scrambled F-Scores" + Arrays.toString(totalF2));
             System.out.println("Avg: " + avg(totalF2));
             System.out.println();
 
@@ -373,6 +365,7 @@ public class NaiiveBayesImplementation {
 
         double mean = avg(x);
         double sum = 0;
+
         for(int i = 0; i < x.length; i++){
             sum += (x[i] - mean) * (x[i] - mean);
         }
